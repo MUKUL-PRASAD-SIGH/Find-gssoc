@@ -16,6 +16,8 @@ Find is a local-first AI image intelligence platform for uploading, indexing, se
 
 All image processing, vector generation, and search stay inside your local stack.
 
+See the mobile direction in [`docs/mobile-strategy.md`](./docs/mobile-strategy.md) and the desktop framework tradeoff analysis in [`docs/desktop-tauri-vs-electron-adr.md`](./docs/desktop-tauri-vs-electron-adr.md).
+
 ## What it does
 
 - Upload individual images or ZIP archives
