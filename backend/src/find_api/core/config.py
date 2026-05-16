@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # Database
-    DATABASE_URL: str = "postgresql://find:find123@localhost:5432/find"
+    DATABASE_URL: str = "sqlite:///./test.db"
 
     # MinIO
     MINIO_ENDPOINT: str = "localhost:9000"

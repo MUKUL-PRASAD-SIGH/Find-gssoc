@@ -7,6 +7,7 @@ import io
 import logging
 from datetime import datetime
 import numpy as np
+from rq import get_current_job  # ✅ IMPORTANT
 
 from find_api.core.database import SessionLocal
 from find_api.core.queue import clear_clustering_job_state, enqueue_clustering_job
@@ -17,85 +18,100 @@ from find_api.utils.exif import extract_exif_data
 logger = logging.getLogger(__name__)
 
 
+def set_stage(job, stage: str):
+    """Helper to update job stage"""
+    if job:
+        job.meta["stage"] = stage
+        job.save_meta()
+
+
 def analyze_image(media_id: int):
     """
     Main worker job to analyze an uploaded image
-
-    Args:
-        media_id: Database ID of media record
     """
+
     from find_api.workers.processors import (
         extract_image_metadata,
         generate_hybrid_embedding,
     )
 
-    # job = get_current_job()
+    job = get_current_job()  # ✅ get job
+
     db = SessionLocal()
     media = None
 
     try:
-        # Get media record
+        # 🔹 Stage: queued → loading
+        set_stage(job, "loading image")
+
         media = db.query(Media).filter(Media.id == media_id).first()
         if not media:
             logger.error(f"Media {media_id} not found")
             return
 
-        logger.info(f"Processing media {media_id}: {media.filename}")
-
-        # Update status
         media.status = "processing"
         db.commit()
 
-        # Download image from MinIO
+        # 🔹 Load image
         image_data = get_file(media.minio_key)
         image = Image.open(io.BytesIO(image_data))
 
-        # Convert to RGB if needed
         if image.mode != "RGB":
             image = image.convert("RGB")
 
-        # Store dimensions
         media.width, media.height = image.size
 
-        # Extract EXIF data
+        # 🔹 Stage: EXIF
+        set_stage(job, "extracting EXIF")
+
         try:
             exif_data = extract_exif_data(image)
             media.exif_json = exif_data
         except Exception as e:
-            logger.warning(f"Failed to extract EXIF: {e}")
+            logger.warning(f"EXIF extraction failed: {e}")
             media.exif_json = {}
 
-        # Extract metadata (Objects, Caption, OCR)
+        # 🔹 Stage: metadata (objects + caption + OCR)
+        set_stage(job, "detecting objects / caption / OCR")
+
         metadata = extract_image_metadata(image)
 
-        # Generate Hybrid Embedding
+        # 🔹 Stage: embedding
+        set_stage(job, "generating embedding")
+
         media.vector = generate_hybrid_embedding(image, metadata)
 
-        # Store metadata
+        # 🔹 Stage: indexing
+        set_stage(job, "indexing complete")
+
         media.metadata_json = metadata
         media.status = "indexed"
         media.processed_at = datetime.utcnow()
 
         db.commit()
 
+        # 🔹 Stage: clustering
+        set_stage(job, "clustering queued")
+
         try:
             enqueue_clustering_job(reason=f"media:{media_id}")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Indexed media %s but failed to queue clustering: %s",
-                media_id,
-                exc,
-            )
+        except Exception as exc:
+            logger.warning(f"Failed to enqueue clustering: {exc}")
 
         logger.info(f"Successfully processed media {media_id}")
 
-        return {"media_id": media_id, "status": "success", "metadata": metadata}
+        return {
+            "media_id": media_id,
+            "status": "success",
+        }
 
     except Exception as e:
         logger.error(f"Failed to process media {media_id}: {e}")
         db.rollback()
 
-        # Update status to failed
+        # 🔹 Stage: failed
+        set_stage(job, "failed")
+
         if media:
             media.status = "failed"
             media.error_message = str(e)
@@ -111,9 +127,9 @@ def cluster_images():
     """
     Background job to cluster all indexed images
     """
+
     from find_api.ml.clusterer import get_image_clusterer
     from find_api.models.cluster import Cluster
-
     from find_api.core.config import settings
 
     db = SessionLocal()
@@ -135,25 +151,14 @@ def cluster_images():
 
         if len(media_rows) < settings.MIN_CLUSTER_SIZE:
             db.commit()
-            logger.warning(
-                "Not enough images for clustering (found %s, need %s)",
-                len(media_rows),
-                settings.MIN_CLUSTER_SIZE,
-            )
             return {
                 "n_clusters": 0,
-                "noise_points": len(media_rows),
-                "total_points": len(media_rows),
-                "message": "Not enough indexed images for clustering",
+                "message": "Not enough images for clustering",
             }
 
-        # Extract embeddings and IDs
         embeddings = np.asarray([row.vector for row in media_rows], dtype=np.float32)
         media_ids = [row.id for row in media_rows]
 
-        logger.info(f"Clustering {len(media_rows)} images...")
-
-        # Run clustering
         clusterer = get_image_clusterer()
         labels, info = clusterer.cluster(embeddings)
 
@@ -161,14 +166,8 @@ def cluster_images():
 
         if not cluster_labels:
             db.commit()
-            logger.info("Clustering completed with no stable clusters")
-            return {
-                **info,
-                "message": "No stable clusters found",
-                "cluster_ids": [],
-            }
+            return {**info, "message": "No clusters found"}
 
-        # Compute centroids
         centroids = clusterer.compute_centroids(embeddings, labels)
 
         cluster_records = {}
@@ -188,7 +187,6 @@ def cluster_images():
             db.flush()
             cluster_records[cluster_label] = cluster
 
-        # Update media with cluster assignments
         db.bulk_update_mappings(
             Media,
             [
@@ -204,13 +202,10 @@ def cluster_images():
 
         db.commit()
 
-        result = {
+        return {
             **info,
-            "message": "Clustering completed successfully",
-            "cluster_ids": [cluster.id for cluster in cluster_records.values()],
+            "message": "Clustering completed",
         }
-        logger.info("Clustering complete: %s", result)
-        return result
 
     except Exception as e:
         logger.error(f"Clustering failed: {e}")
