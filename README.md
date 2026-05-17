@@ -192,6 +192,29 @@ uv run pytest tests/ -v
 - Cached models are stored in the Docker volume mounted at `model_cache`.
 - Use `docker compose -f docker-compose.light.yml up --build` when you only need to test contributor changes without real ML inference.
 
+### Docker disk usage
+
+- The full GPU stack is intentionally large because it includes CUDA, PyTorch, OCR, and the real ML dependencies needed for local inference.
+- Uploaded images live in MinIO, while model downloads live in `model_cache`. Docker build cache is separate from both.
+- If repeated rebuilds make Docker grow too much, inspect usage with `docker system df -v`.
+- To safely reclaim old build cache while keeping recent layers for faster rebuilds:
+
+```bash
+docker builder prune -f --reserved-space 10GB
+```
+
+- Older installs may also contain a stale `uv` package cache inside the `model_cache` volume. If present, it is safe to remove while keeping downloaded model files:
+
+```bash
+docker compose exec api sh -lc "rm -rf /root/.cache/uv"
+```
+
+- Prefer the light stack for routine UI/API/docs work when you do not need real inference:
+
+```bash
+docker compose -f docker-compose.light.yml up --build
+```
+
 ## Contribution quick start
 
 1. Pick an issue and comment to get assigned.
