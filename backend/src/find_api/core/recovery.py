@@ -29,7 +29,7 @@ def reconcile_abandoned_analysis_jobs(db: Session) -> int:
     stale_media = (
         db.query(Media)
         .filter(Media.status.in_(["pending", "processing"]))
-        .filter(Media.created_at < timeout_at)
+        .filter(func.coalesce(Media.updated_at, Media.created_at) < timeout_at)
         .all()
     )
 
