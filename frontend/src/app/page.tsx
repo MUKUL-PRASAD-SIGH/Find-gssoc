@@ -6,7 +6,7 @@ export default function HomePage() {
     <main className="home-shell">
       <section className="container-shell hero-viewport flex flex-col justify-center gap-8 py-8 md:gap-10 md:py-10">
         <div className="page-enter mx-auto flex max-w-4xl flex-col items-center justify-center text-center">
-      <h1 className="display-heading mb-4 text-5xl sm:text-6xl lg:text-6xl xl:text-7xl">
+          <h1 className="display-heading mb-4 text-5xl sm:text-6xl lg:text-6xl xl:text-7xl">
             <span className="block sm:hidden">Your visual</span>
             <span className="block sm:hidden">memory,</span>
             <span className="block sm:hidden">indexed.</span>

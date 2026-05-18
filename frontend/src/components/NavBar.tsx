@@ -22,35 +22,35 @@ export default function NavBar() {
 
   // Theme state
   const [theme, setTheme] = useState<Theme>("light");
-useEffect(() => {
-  setMounted(true);
+  useEffect(() => {
+    setMounted(true);
 
-  let initialTheme: Theme = "light";
+    let initialTheme: Theme = "light";
 
-  try {
-    const savedTheme = localStorage.getItem("find-theme") as Theme | null;
+    try {
+      const savedTheme = localStorage.getItem("find-theme") as Theme | null;
 
-    if (savedTheme === "light" || savedTheme === "dark") {
-      // Use the user's previously saved preference
-      initialTheme = savedTheme;
-    } else {
-      // No saved preference -> follow the operating system preference
-      initialTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
+      if (savedTheme === "light" || savedTheme === "dark") {
+        // Use the user's previously saved preference
+        initialTheme = savedTheme;
+      } else {
+        // No saved preference -> follow the operating system preference
+        initialTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+      }
+    } catch {
+      // Fallback if localStorage is unavailable
+      initialTheme = "light";
     }
-  } catch {
-    // Fallback if localStorage is unavailable
-    initialTheme = "light";
-  }
 
-  document.documentElement.classList.remove("light", "dark");
-  document.documentElement.classList.add(initialTheme);
-  document.documentElement.dataset.theme = initialTheme;
-  document.documentElement.style.colorScheme = initialTheme;
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(initialTheme);
+    document.documentElement.dataset.theme = initialTheme;
+    document.documentElement.style.colorScheme = initialTheme;
 
-  setTheme(initialTheme);
-}, []);
+    setTheme(initialTheme);
+  }, []);
 
   const toggleTheme = () => {
     const nextTheme: Theme = theme === "light" ? "dark" : "light";
